@@ -1,2 +1,6 @@
 # ECS
-Simplistic ecs designed for performance and simplicity.
+
+Simplistic ecs designed for performance and ease of use.
+
+
+## Benchmark
