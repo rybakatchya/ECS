@@ -1,6 +1,6 @@
 # ECS
 
-Simplistic ecs designed for performance and ease of use.
+Simplistic ecs designed for performance and ease of use. See unit tests for simple example.
 
 
 ## Benchmark
