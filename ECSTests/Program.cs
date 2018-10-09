@@ -140,24 +140,24 @@ namespace ECSTests
     }
 
 
+
     public class TestSystem : ComponentSystem
     {
-        public struct Data
-        {
-            public TestComponent test;
-            public OtherComponent other;
-        };
 
-        [Inject(typeof(TestComponent), typeof(OtherComponent))]
-        public List<ushort> entities { get; set; }
+        public class Data
+        {        
+            public List<TestComponent> test;
+            public List<OtherComponent> other;
+        };
+        [Inject]
+        public Data entities = new Data();
 
         public override void Update(World world)
         {
-            Assert.That(entities.Count, Is.EqualTo(1));
-            foreach (var e in entities)
+            for(int i = 0; i < entities.test.Count; i++)
             {
-                Assert.That(EntityManager.GetComponent<TestComponent>(world, e).value, Is.EqualTo(232));
-                Assert.That(EntityManager.GetComponent<OtherComponent>(world, e).value, Is.EqualTo(123));
+                Assert.That(entities.test[i], Is.EqualTo(232));
+                Assert.That(entities.other[i], Is.EqualTo(123));
             }
             Console.WriteLine("Test stage 2 passed");
             Program.isActive = false;

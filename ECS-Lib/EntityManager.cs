@@ -15,11 +15,12 @@ namespace ECS
         //List of active worlds. 
         private static readonly List<World> s_worlds = new List<World>();
 
+        private static Stack<ComponentSystem> s_systems = new Stack<ComponentSystem>();
+
         //Used to keep track of weather or not the needed references are in place for dependency injection
         private static bool s_isInit = false;
 
-        //List of tuples. this is used to inject dependencies to componentsystems.
-        private static readonly List<Tuple<ComponentSystem, List<Type>, PropertyInfo>> s_injectorList = new List<Tuple<ComponentSystem, List<Type>, PropertyInfo>>();
+        private static Dictionary<object, List<FieldInfo>> s_injectorList = new Dictionary<object, List<FieldInfo>>();
 
         public static byte CreateEntityPrototype()
         {
@@ -82,22 +83,84 @@ namespace ECS
                     {
                         //Create an instance of the system so its update method can start being called.
                         object o = Activator.CreateInstance(type, true);
-                        //finds a list of properties
-                        var properties = o.GetType().GetProperties();
+
+                        
+                        //finds a list of fields
+                        var fields = o.GetType().GetFields();
                         //loops through the said properties.
-                        foreach (var property in properties)
+                        foreach (var field in fields)
                         {
                             //Gets its custom attribute
-                            var i = property.GetCustomAttribute<Inject>();
-                            //if the attribute is null that means it doesn't have it so don't cach the property.
+                            var i = field.GetCustomAttribute<Inject>();
+                            if(field.GetType().GetInterfaces().Contains(typeof(IComponentData)))
+                            {
+                                throw new InvalidOperationException("Value must be a list of IComponentData");
+                            }
+                            //if the attribute is null that means it doesn't have it so don't cache the property.
                             if (i != null)
                             {
-                                //Give the property a new list.
-                                property.SetValue(o, new List<ushort>());
+                                var injectedObject = Activator.CreateInstance(field.FieldType);
+                               
+                                FieldInfo[] injectableFields = injectedObject.GetType().GetFields();
+                                s_injectorList.Add(injectedObject, null);
+                                foreach (FieldInfo injectedField in injectableFields)
+                                {
+                                    var fieldType = injectedField.FieldType.GetGenericArguments()[0].GetInterfaces();
+                                    if (fieldType.Contains(typeof(IComponent)))
+                                    {
+                                        var typeInstance = Activator.CreateInstance(injectedField.FieldType);
+                                       
+                                        
+                                        if (s_injectorList[injectedObject] == null)
+                                            s_injectorList[injectedObject] = new List<FieldInfo>();
 
-                                //cache the object instance of said component system, the list of types passed with the inject attribute and any properties to inject to.
-                                s_injectorList.Add(new Tuple<ComponentSystem, List<Type>, PropertyInfo>((ComponentSystem)o, i.types.ToList(), property));
+                                        s_injectorList[injectedObject].Add(field);
+                                        injectedField.SetValue(injectedObject, typeInstance);
+                                    }
+                                    else
+                                    {
+                                        throw new InvalidOperationException("Value must be a list of IComponent");
+                                    }
+
+
+                                }
+                                field.SetValue(o, injectedObject);
+                                s_systems.Push((ComponentSystem)o); 
+
+                                
+                            /*
+                            var val = property.GetValue(o);
+                            var reff = __makeref(val);
+                            var injectedObject = [rp]
+
+                            FieldInfo[] fields = injectedObject.GetType().GetFields();
+                            s_injectorList.Add(injectedObject.GetValue(o), null);
+                            foreach (FieldInfo field in fields)
+                            {
+
+                                var fieldType = field.FieldType.GetGenericArguments()[0].GetInterfaces();
+                                if (fieldType.Contains(typeof(IComponent)))
+                                {
+                                    var typeInstance = Activator.CreateInstance(field.FieldType);
+                                    field.SetValue(injectedObject.GetValue(o), typeInstance);
+                                    if (s_injectorList[injectedObject.GetValue(o)] == null)
+                                        s_injectorList[injectedObject.GetValue(o)] = new List<FieldInfo>();
+
+                                    s_injectorList[injectedObject.GetValue(0)].Add( field);
+
+
+                                }
+                                else
+                                {
+                                    throw new InvalidOperationException("Value must be a list of IComponent");
+                                }
+
+
                             }
+                            property.SetValue(o, injectedObject.GetValue(o));
+                            s_systems.Push((ComponentSystem)o);*/
+
+                        }
                         }
                     }
                 }
@@ -110,6 +173,8 @@ namespace ECS
         /// </summary>
         /// <returns></returns>
         public static World CreateWorld()
+
+
         {
             if (!s_isInit)
             {
@@ -166,30 +231,31 @@ namespace ECS
         /// </summary>
         public static void Update()
         {
-            foreach (var v in s_injectorList)
+            if (!s_isInit)
+                return;
+            foreach (World world in s_worlds)
             {
-                foreach (var w in s_worlds)
+                foreach (var system in s_systems)
                 {
-                    v.Item1.Update(w);
+                    system.Update(world);
                 }
             }
         }
         public static void AddComponent<T>(World world, ushort entityID, ref T value) where T : struct, IComponent
         {
             world.Components[entityID].Push(value);
-            foreach (var v in s_injectorList)
+            foreach(var kvp in s_injectorList)
             {
-                foreach (var type in v.Item2)
+                foreach(var field in kvp.Value)
                 {
-                    if (typeof(T) == type)
+                    if(field.GetType() == typeof(T))
                     {
-                        if (((List<ushort>)v.Item3.GetValue(v.Item1)).Contains(entityID) == false)
-                        {
-                            ((List<ushort>)v.Item3.GetValue(v.Item1)).Add(entityID);
-                        }
+                        ((List<IComponent>)field.GetValue(kvp.Key)).Add(value); 
                     }
                 }
             }
+
+            
         }
 
         public static void RemoveComponent<T>(World world, ushort entityID) where T : struct, IComponent
@@ -199,16 +265,7 @@ namespace ECS
                 throw new Exception("Entity does not exist");
             }
             world.Components[entityID] = (Stack<IComponent>)world.Components[entityID].Remove(typeof(T));
-            foreach (var v in s_injectorList)
-            {
-                foreach (var type in v.Item2)
-                {
-                    if (typeof(T) == type)
-                    {
-                        ((List<IComponent>)v.Item3.GetValue(v.Item1)).Remove(type);
-                    }
-                }
-            }
+            
         }
 
         public static bool HasComponent<T>(World world, ushort entityID)

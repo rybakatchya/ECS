@@ -4,6 +4,10 @@ using System.Text;
 
 namespace ECS.interfaces
 {
+    public interface IComponentData
+    {
+
+    }
     public interface IComponent
     {
 
